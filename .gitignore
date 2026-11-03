@@ -1,0 +1,6 @@
+
+# Raw Olist dataset - do not upload to GitHub
+data/raw/
+
+# Downloaded dataset archives
+*.zip
