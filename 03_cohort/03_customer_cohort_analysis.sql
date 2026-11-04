@@ -198,3 +198,219 @@ INNER JOIN cohort_sizes cs
 ORDER BY
     cr.cohort_month,
     cr.cohort_index;
+    
+-- =====================================================
+-- PROJECT: Customer Churn & Retention Intelligence
+-- PHASE 4: Cohort Retention Analysis
+-- STEP 23: Final Cohort Retention Pivot Matrix
+-- PURPOSE:
+-- Create a complete monthly retention matrix.
+-- Show 0% when an observed month has no active customers.
+-- Keep future, unobserved months as NULL.
+-- =====================================================
+
+-- STEP 1: Find each customer's first delivered purchase
+WITH customer_first_purchase AS (
+
+    SELECT
+        c.customer_unique_id,
+        MIN(o.order_purchase_timestamp)::DATE AS first_purchase_date
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    WHERE o.order_status = 'delivered'
+
+    GROUP BY c.customer_unique_id
+),
+
+-- STEP 2: Assign monthly cohorts
+customer_cohorts AS (
+
+    SELECT
+        customer_unique_id,
+
+        DATE_TRUNC(
+            'month',
+            first_purchase_date
+        )::DATE AS cohort_month
+
+    FROM customer_first_purchase
+),
+
+-- STEP 3: Identify delivered activity months
+delivered_activity AS (
+
+    SELECT DISTINCT
+        c.customer_unique_id,
+
+        DATE_TRUNC(
+            'month',
+            o.order_purchase_timestamp
+        )::DATE AS activity_month
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    WHERE o.order_status = 'delivered'
+),
+
+-- STEP 4: Find the latest observed delivered activity month
+dataset_snapshot AS (
+
+    SELECT
+        MAX(activity_month) AS snapshot_month
+    FROM delivered_activity
+),
+
+-- STEP 5: Calculate active customers by cohort month
+cohort_activity AS (
+
+    SELECT
+        cc.customer_unique_id,
+        cc.cohort_month,
+
+        (
+            EXTRACT(YEAR FROM da.activity_month) -
+            EXTRACT(YEAR FROM cc.cohort_month)
+        ) * 12
+        +
+        (
+            EXTRACT(MONTH FROM da.activity_month) -
+            EXTRACT(MONTH FROM cc.cohort_month)
+        ) AS cohort_index
+
+    FROM customer_cohorts cc
+
+    INNER JOIN delivered_activity da
+        ON cc.customer_unique_id = da.customer_unique_id
+
+    WHERE da.activity_month >= cc.cohort_month
+),
+
+-- STEP 6: Count active customers in observed months
+monthly_activity AS (
+
+    SELECT
+        cohort_month,
+        cohort_index,
+        COUNT(DISTINCT customer_unique_id) AS active_customers
+
+    FROM cohort_activity
+
+    GROUP BY cohort_month, cohort_index
+),
+
+-- STEP 7: Calculate original cohort sizes
+cohort_sizes AS (
+
+    SELECT
+        cohort_month,
+        COUNT(*) AS cohort_customers
+
+    FROM customer_cohorts
+
+    GROUP BY cohort_month
+),
+
+-- STEP 8: Generate every observable cohort-month combination
+complete_cohort_grid AS (
+
+    SELECT
+        cs.cohort_month,
+        cs.cohort_customers,
+        gs.cohort_index
+
+    FROM cohort_sizes cs
+
+    CROSS JOIN dataset_snapshot ds
+
+    CROSS JOIN LATERAL GENERATE_SERIES(
+        0,
+        (
+            EXTRACT(YEAR FROM ds.snapshot_month) -
+            EXTRACT(YEAR FROM cs.cohort_month)
+        ) * 12
+        +
+        (
+            EXTRACT(MONTH FROM ds.snapshot_month) -
+            EXTRACT(MONTH FROM cs.cohort_month)
+        )
+    ) AS gs(cohort_index)
+),
+
+-- STEP 9: Calculate retention, preserving zero-activity months
+retention_data AS (
+
+    SELECT
+        cg.cohort_month,
+        cg.cohort_index,
+
+        COALESCE(ma.active_customers, 0) AS active_customers,
+
+        ROUND(
+            COALESCE(ma.active_customers, 0) * 100.0
+            / cg.cohort_customers,
+            2
+        ) AS retention_percentage
+
+    FROM complete_cohort_grid cg
+
+    LEFT JOIN monthly_activity ma
+        ON cg.cohort_month = ma.cohort_month
+       AND cg.cohort_index = ma.cohort_index
+)
+
+-- STEP 10: Pivot retention percentages into columns
+SELECT
+    cohort_month,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 0) AS month_0,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 1) AS month_1,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 2) AS month_2,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 3) AS month_3,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 4) AS month_4,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 5) AS month_5,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 6) AS month_6,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 7) AS month_7,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 8) AS month_8,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 9) AS month_9,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 10) AS month_10,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 11) AS month_11,
+
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 12) AS month_12
+
+FROM retention_data
+
+GROUP BY cohort_month
+
+ORDER BY cohort_month;
+
