@@ -437,3 +437,102 @@ SELECT
     ROUND(MAX(purchase_gap_days)::NUMERIC, 2) AS max_purchase_gap_days
 
 FROM purchase_gaps;
+-- =====================================================
+-- PROJECT: Customer Churn & Retention Intelligence
+-- PHASE 3: Customer Retention & Churn Analysis
+-- STEP 20: Repeat Purchase Gap Distribution
+-- PURPOSE:
+-- Classify consecutive delivered purchase gaps into
+-- time buckets and measure customer distribution.
+-- =====================================================
+
+-- STEP 1: Retrieve each customer's delivered orders
+WITH customer_order_history AS (
+
+    SELECT
+        c.customer_unique_id,
+        o.order_id,
+        o.order_purchase_timestamp,
+
+        -- Retrieve the previous delivered order date
+        LAG(o.order_purchase_timestamp) OVER (
+            PARTITION BY c.customer_unique_id
+            ORDER BY o.order_purchase_timestamp, o.order_id
+        ) AS previous_order_date
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    WHERE o.order_status = 'delivered'
+),
+
+-- STEP 2: Calculate consecutive purchase gaps
+purchase_gaps AS (
+
+    SELECT
+        customer_unique_id,
+
+        -- Calculate days between consecutive purchases
+        EXTRACT(
+            EPOCH FROM (
+                order_purchase_timestamp - previous_order_date
+            )
+        ) / 86400.0 AS purchase_gap_days
+
+    FROM customer_order_history
+
+    WHERE previous_order_date IS NOT NULL
+),
+
+-- STEP 3: Classify purchase gaps into time buckets
+gap_segments AS (
+
+    SELECT
+        customer_unique_id,
+        purchase_gap_days,
+
+        CASE
+            WHEN purchase_gap_days <= 30 THEN '0-30 Days'
+            WHEN purchase_gap_days <= 60 THEN '31-60 Days'
+            WHEN purchase_gap_days <= 90 THEN '61-90 Days'
+            WHEN purchase_gap_days <= 180 THEN '91-180 Days'
+            ELSE 'Above 180 Days'
+        END AS gap_segment
+
+    FROM purchase_gaps
+)
+
+-- STEP 4: Summarize purchase gap distribution
+SELECT
+    gap_segment,
+
+    -- Number of consecutive purchase gaps
+    COUNT(*) AS total_purchase_gaps,
+
+    -- Unique customers represented in each bucket
+    COUNT(DISTINCT customer_unique_id) AS unique_customers,
+
+    -- Percentage of all purchase gaps
+    ROUND(
+        COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (),
+        2
+    ) AS gap_percentage,
+
+    -- Average gap duration within each bucket
+    ROUND(AVG(purchase_gap_days)::NUMERIC, 2) AS avg_gap_days
+
+FROM gap_segments
+
+GROUP BY gap_segment
+
+-- Display buckets in chronological order
+ORDER BY
+    CASE gap_segment
+        WHEN '0-30 Days' THEN 1
+        WHEN '31-60 Days' THEN 2
+        WHEN '61-90 Days' THEN 3
+        WHEN '91-180 Days' THEN 4
+        WHEN 'Above 180 Days' THEN 5
+    END;
