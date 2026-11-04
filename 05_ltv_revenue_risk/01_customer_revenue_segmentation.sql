@@ -83,3 +83,82 @@ GROUP BY customer_segment
 
 -- Display the segment with highest revenue first
 ORDER BY total_revenue DESC;
+-- =====================================================
+-- PROJECT: Customer Churn & Retention Intelligence
+-- PHASE 2: Customer Revenue Segmentation
+-- STEP 11: Revenue Contribution Analysis
+-- PURPOSE: Calculate each customer segment's share
+-- of total delivered product revenue.
+-- =====================================================
+
+-- STEP 1: Calculate product revenue per customer
+WITH customer_revenue AS (
+
+    SELECT
+        c.customer_unique_id,
+
+        -- Count distinct delivered orders
+        COUNT(DISTINCT o.order_id) AS delivered_orders,
+
+        -- Calculate delivered product revenue
+        SUM(oi.price) AS product_revenue
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    INNER JOIN olist.order_items oi
+        ON o.order_id = oi.order_id
+
+    WHERE o.order_status = 'delivered'
+
+    GROUP BY c.customer_unique_id
+),
+
+-- STEP 2: Classify customers
+customer_segments AS (
+
+    SELECT
+        customer_unique_id,
+        delivered_orders,
+        product_revenue,
+
+        CASE
+            WHEN delivered_orders = 1 THEN 'One-time'
+            ELSE 'Repeat'
+        END AS customer_segment
+
+    FROM customer_revenue
+),
+
+-- STEP 3: Calculate revenue for each segment
+segment_revenue AS (
+
+    SELECT
+        customer_segment,
+        COUNT(*) AS total_customers,
+        SUM(product_revenue) AS total_revenue
+
+    FROM customer_segments
+
+    GROUP BY customer_segment
+)
+
+-- STEP 4: Calculate percentage contribution
+SELECT
+    customer_segment,
+    total_customers,
+
+    ROUND(total_revenue, 2) AS total_revenue,
+
+    -- Revenue contribution as a percentage of total revenue
+    ROUND(
+        total_revenue * 100.0 /
+        SUM(total_revenue) OVER (),
+        2
+    ) AS revenue_contribution_pct
+
+FROM segment_revenue
+
+ORDER BY total_revenue DESC;
