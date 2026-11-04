@@ -351,3 +351,89 @@ ORDER BY
         WHEN 'Three to Five Orders' THEN 3
         WHEN 'More than Five Orders' THEN 4
     END;
+    -- =====================================================
+-- PROJECT: Customer Churn & Retention Intelligence
+-- PHASE 3: Customer Retention & Churn Analysis
+-- STEP 19: Repeat Purchase Gap Analysis
+-- PURPOSE:
+-- Measure the number of days between consecutive
+-- delivered purchases made by the same customer.
+-- =====================================================
+
+-- STEP 1: Identify each customer's delivered orders
+WITH customer_order_history AS (
+
+    SELECT
+        c.customer_unique_id,
+        o.order_id,
+        o.order_purchase_timestamp,
+
+        -- Get the previous delivered order date
+        LAG(o.order_purchase_timestamp) OVER (
+            PARTITION BY c.customer_unique_id
+            ORDER BY o.order_purchase_timestamp, o.order_id
+        ) AS previous_order_date
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    WHERE o.order_status = 'delivered'
+),
+
+-- STEP 2: Calculate the gap between consecutive purchases
+purchase_gaps AS (
+
+    SELECT
+        customer_unique_id,
+
+        -- Calculate gap in days between consecutive orders
+        EXTRACT(
+            EPOCH FROM (
+                order_purchase_timestamp - previous_order_date
+            )
+        ) / 86400.0 AS purchase_gap_days
+
+    FROM customer_order_history
+
+    -- Exclude the first order because it has no previous order
+    WHERE previous_order_date IS NOT NULL
+)
+
+-- STEP 3: Summarize repeat purchase timing
+SELECT
+    -- Number of repeat purchase gaps
+    COUNT(*) AS total_repeat_purchase_gaps,
+
+    -- Number of unique customers with repeat purchases
+    COUNT(DISTINCT customer_unique_id) AS repeat_customers,
+
+    -- Average gap between consecutive purchases
+    ROUND(AVG(purchase_gap_days)::NUMERIC, 2) AS avg_purchase_gap_days,
+
+    -- Median purchase gap
+    ROUND(
+        PERCENTILE_CONT(0.50)
+        WITHIN GROUP (ORDER BY purchase_gap_days)::NUMERIC,
+        2
+    ) AS median_purchase_gap_days,
+
+    -- 75th percentile purchase gap
+    ROUND(
+        PERCENTILE_CONT(0.75)
+        WITHIN GROUP (ORDER BY purchase_gap_days)::NUMERIC,
+        2
+    ) AS p75_purchase_gap_days,
+
+    -- 90th percentile purchase gap
+    ROUND(
+        PERCENTILE_CONT(0.90)
+        WITHIN GROUP (ORDER BY purchase_gap_days)::NUMERIC,
+        2
+    ) AS p90_purchase_gap_days,
+
+    -- Longest observed gap between consecutive purchases
+    ROUND(MAX(purchase_gap_days)::NUMERIC, 2) AS max_purchase_gap_days
+
+FROM purchase_gaps;
