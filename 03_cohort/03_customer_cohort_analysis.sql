@@ -414,3 +414,164 @@ GROUP BY cohort_month
 
 ORDER BY cohort_month;
 
+-- =====================================================
+-- PROJECT: Customer Churn & Retention Intelligence
+-- PHASE 4: Cohort Retention Analysis
+-- STEP 24: Cohort Retention Summary
+-- PURPOSE:
+-- Compare customer retention across Month 1, 3, 6
+-- and 12 for each monthly acquisition cohort.
+-- =====================================================
+
+-- STEP 1: Find each customer's first delivered purchase
+WITH customer_first_purchase AS (
+
+    SELECT
+        c.customer_unique_id,
+
+        -- Identify the first delivered purchase date
+        MIN(o.order_purchase_timestamp)::DATE AS first_purchase_date
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    WHERE o.order_status = 'delivered'
+
+    GROUP BY c.customer_unique_id
+),
+
+-- STEP 2: Assign customers to monthly cohorts
+customer_cohorts AS (
+
+    SELECT
+        customer_unique_id,
+
+        DATE_TRUNC(
+            'month',
+            first_purchase_date
+        )::DATE AS cohort_month
+
+    FROM customer_first_purchase
+),
+
+-- STEP 3: Identify delivered purchase activity
+delivered_activity AS (
+
+    SELECT DISTINCT
+        c.customer_unique_id,
+
+        DATE_TRUNC(
+            'month',
+            o.order_purchase_timestamp
+        )::DATE AS activity_month
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    WHERE o.order_status = 'delivered'
+),
+
+-- STEP 4: Calculate customer activity month index
+cohort_activity AS (
+
+    SELECT
+        cc.customer_unique_id,
+        cc.cohort_month,
+
+        (
+            EXTRACT(YEAR FROM da.activity_month) -
+            EXTRACT(YEAR FROM cc.cohort_month)
+        ) * 12
+        +
+        (
+            EXTRACT(MONTH FROM da.activity_month) -
+            EXTRACT(MONTH FROM cc.cohort_month)
+        ) AS cohort_index
+
+    FROM customer_cohorts cc
+
+    INNER JOIN delivered_activity da
+        ON cc.customer_unique_id = da.customer_unique_id
+
+    WHERE da.activity_month >= cc.cohort_month
+),
+
+-- STEP 5: Calculate active customers for each cohort month
+monthly_retention AS (
+
+    SELECT
+        cohort_month,
+        cohort_index,
+
+        COUNT(DISTINCT customer_unique_id) AS active_customers
+
+    FROM cohort_activity
+
+    GROUP BY cohort_month, cohort_index
+),
+
+-- STEP 6: Calculate original cohort sizes
+cohort_sizes AS (
+
+    SELECT
+        cohort_month,
+        COUNT(*) AS cohort_customers
+
+    FROM customer_cohorts
+
+    GROUP BY cohort_month
+),
+
+-- STEP 7: Calculate retention percentages
+retention_summary AS (
+
+    SELECT
+        cs.cohort_month,
+        cs.cohort_customers,
+        mr.cohort_index,
+
+        -- Calculate customer retention percentage
+        ROUND(
+            COALESCE(mr.active_customers, 0) * 100.0
+            / cs.cohort_customers,
+            2
+        ) AS retention_percentage
+
+    FROM cohort_sizes cs
+
+    LEFT JOIN monthly_retention mr
+        ON cs.cohort_month = mr.cohort_month
+       AND mr.cohort_index IN (0, 1, 3, 6, 12)
+)
+
+-- STEP 8: Create business-friendly cohort summary
+SELECT
+    cohort_month,
+    cohort_customers,
+
+    -- Month 1 retention
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 1) AS month_1_retention,
+
+    -- Month 3 retention
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 3) AS month_3_retention,
+
+    -- Month 6 retention
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 6) AS month_6_retention,
+
+    -- Month 12 retention
+    MAX(retention_percentage)
+        FILTER (WHERE cohort_index = 12) AS month_12_retention
+
+FROM retention_summary
+
+GROUP BY cohort_month, cohort_customers
+
+ORDER BY cohort_month;
+
