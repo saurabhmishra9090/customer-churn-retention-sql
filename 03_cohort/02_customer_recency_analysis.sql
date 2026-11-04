@@ -194,3 +194,87 @@ ORDER BY
         WHEN 'High Risk' THEN 5
         WHEN 'Long Inactive' THEN 6
     END;
+    -- =====================================================
+-- PROJECT: Customer Churn & Retention Intelligence
+-- PHASE 3: Customer Retention & Churn Analysis
+-- STEP 17: Recency by Purchase Frequency
+-- PURPOSE:
+-- Compare inactivity patterns between one-time and
+-- repeat customers using delivered order history.
+-- =====================================================
+
+-- STEP 1: Identify the dataset snapshot date
+WITH dataset_snapshot AS (
+
+    SELECT
+        MAX(order_purchase_timestamp)::DATE AS snapshot_date
+    FROM olist.orders
+),
+
+-- STEP 2: Calculate purchase behavior for each customer
+customer_behavior AS (
+
+    SELECT
+        c.customer_unique_id,
+
+        -- Count distinct delivered orders
+        COUNT(DISTINCT o.order_id) AS delivered_orders,
+
+        -- Find the customer's latest delivered purchase
+        MAX(o.order_purchase_timestamp)::DATE AS last_purchase_date
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    WHERE o.order_status = 'delivered'
+
+    GROUP BY c.customer_unique_id
+),
+
+-- STEP 3: Calculate recency and classify customers
+customer_segments AS (
+
+    SELECT
+        cb.customer_unique_id,
+        cb.delivered_orders,
+
+        -- Calculate days since last delivered purchase
+        ds.snapshot_date - cb.last_purchase_date AS recency_days,
+
+        -- Classify based on delivered order frequency
+        CASE
+            WHEN cb.delivered_orders = 1 THEN 'One-time'
+            ELSE 'Repeat'
+        END AS customer_segment
+
+    FROM customer_behavior cb
+    CROSS JOIN dataset_snapshot ds
+)
+
+-- STEP 4: Compare recency between customer segments
+SELECT
+    customer_segment,
+
+    -- Total customers in each segment
+    COUNT(*) AS total_customers,
+
+    -- Average days since last purchase
+    ROUND(AVG(recency_days), 2) AS avg_recency_days,
+
+    -- Median days since last purchase
+    ROUND(
+        PERCENTILE_CONT(0.50)
+        WITHIN GROUP (ORDER BY recency_days)::NUMERIC,
+        2
+    ) AS median_recency_days,
+
+    -- Average delivered orders per customer
+    ROUND(AVG(delivered_orders), 2) AS avg_delivered_orders
+
+FROM customer_segments
+
+GROUP BY customer_segment
+
+ORDER BY total_customers DESC;
