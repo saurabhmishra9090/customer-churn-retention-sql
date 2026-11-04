@@ -278,3 +278,76 @@ FROM customer_segments
 GROUP BY customer_segment
 
 ORDER BY total_customers DESC;
+-- =====================================================
+-- PROJECT: Customer Churn & Retention Intelligence
+-- PHASE 3: Customer Retention & Churn Analysis
+-- STEP 18: Customer Purchase Frequency Distribution
+-- PURPOSE:
+-- Understand how frequently delivered customers
+-- purchase from the e-commerce business.
+-- =====================================================
+
+-- STEP 1: Calculate delivered orders per customer
+WITH customer_orders AS (
+
+    SELECT
+        c.customer_unique_id,
+
+        -- Count distinct delivered orders
+        COUNT(DISTINCT o.order_id) AS delivered_orders
+
+    FROM olist.customers c
+
+    INNER JOIN olist.orders o
+        ON c.customer_id = o.customer_id
+
+    WHERE o.order_status = 'delivered'
+
+    GROUP BY c.customer_unique_id
+),
+
+-- STEP 2: Classify customers by purchase frequency
+frequency_segments AS (
+
+    SELECT
+        customer_unique_id,
+        delivered_orders,
+
+        CASE
+            WHEN delivered_orders = 1 THEN 'One-time'
+            WHEN delivered_orders = 2 THEN 'Two Orders'
+            WHEN delivered_orders BETWEEN 3 AND 5 THEN 'Three to Five Orders'
+            ELSE 'More than Five Orders'
+        END AS frequency_segment
+
+    FROM customer_orders
+)
+
+-- STEP 3: Summarize purchase frequency distribution
+SELECT
+    frequency_segment,
+
+    -- Number of customers in each segment
+    COUNT(*) AS total_customers,
+
+    -- Percentage of total delivered customers
+    ROUND(
+        COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (),
+        2
+    ) AS customer_percentage,
+
+    -- Average delivered orders per customer
+    ROUND(AVG(delivered_orders), 2) AS avg_orders_per_customer
+
+FROM frequency_segments
+
+GROUP BY frequency_segment
+
+-- Display segments in logical order
+ORDER BY
+    CASE frequency_segment
+        WHEN 'One-time' THEN 1
+        WHEN 'Two Orders' THEN 2
+        WHEN 'Three to Five Orders' THEN 3
+        WHEN 'More than Five Orders' THEN 4
+    END;
