@@ -263,3 +263,53 @@ FROM order_quality;
 -- Late delivery is an operational performance indicator,
 -- not automatically a data-quality error.
 -- =====================================================
+-- =====================================================
+-- SECTION 3: INVESTIGATION FINDINGS
+--
+-- Carrier timestamp before approval:
+-- Total affected orders: 1,359
+-- Delivered orders: 1,350
+-- Shipped orders: 9
+--
+-- Average hours before approval:
+-- Delivered: 24.70 hours
+-- Shipped: 32.10 hours
+--
+-- Maximum hours before approval:
+-- Delivered: 4,109.26 hours
+-- Shipped: 98.32 hours
+--
+-- Additional investigation:
+-- Top 10 affected records were inspected.
+-- One record showed carrier handover approximately
+-- 171 days before the purchase timestamp.
+--
+-- Another group of records showed carrier handover
+-- around 4-5 September 2017, while approval was
+-- recorded on 13 September 2017.
+--
+-- BUSINESS DECISION:
+-- These records require source-data investigation.
+-- No timestamps have been modified or deleted.
+-- Original source values are preserved.
+--
+-- Late deliveries (7,827 records) are treated as
+-- operational performance indicators, not automatic
+-- data-quality errors.
+-- =====================================================
+-- =====================================================
+-- SECTION 4: DELIVERY TIMESTAMP INVESTIGATION
+--
+-- Delivery timestamp earlier than carrier timestamp:
+-- Total affected records: 23
+-- Delivered status: 23
+--
+-- BUSINESS INTERPRETATION:
+-- All 23 affected records belong to delivered orders.
+-- These are potential timestamp inconsistencies.
+--
+-- FINAL DATA CLEANING DECISION:
+-- Preserve all original timestamps.
+-- Do not delete or overwrite source records.
+-- Flag these records for further investigation.
+-- =====================================================
