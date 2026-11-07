@@ -166,7 +166,7 @@ The following findings are based on the current dataset analysis.
 | Delivered orders | 96,478 |
 | Historical product revenue | R$13,221,498.11 |
 | Average lifetime revenue per customer | R$141.62 |
-| One-time customers in all customer records | 93,099 |
+| One-time customers (all purchase-history customers) | 93,099 |
 | Repeat customers in all customer records | 2,997 |
 | High-value inactive customers (>90 days) | 21,049 |
 | Customers inactive for more than 180 days | 65,963 |
@@ -284,7 +284,7 @@ Refer to individual SQL files for table definitions, data validation, analysis, 
 
 ## 17. Project Status
 
-**Status:** Analytical development and documentation in progress.
+**Status:** Core SQL analysis completed; final documentation and portfolio review.
 
 Completed work includes database setup, data validation, customer analysis, cohort analysis, RFM segmentation, lifetime revenue analysis, inactivity and revenue exposure analysis, retention planning, and initial query performance experiments.
 
